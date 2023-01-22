@@ -1,0 +1,2 @@
+# snippetsbox
+Snippets storage
