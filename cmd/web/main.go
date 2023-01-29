@@ -1,26 +1,53 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
+	"os"
 )
 
-func main() {
-	// Use the http.NewServeMux() function to initialize a new servemux, then
-	// register the home function as the handler for the "/" URL pattern.
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", home)
-	mux.HandleFunc("/snippet", showSnippet)
-	mux.HandleFunc("/snippet/create", createSnippet)
+type Config struct {
+	Addr      string
+	StaticDir string
+}
 
-	fileServer := http.FileServer(http.Dir("./ui/static/"))
+type application struct {
+	errorLog *log.Logger
+	infoLog  *log.Logger
+}
+
+func main() {
+	// конфигурация приложения
+	cfg := new(Config)
+	flag.StringVar(&cfg.Addr, "addr", ":4000", "HTTP network address")
+	flag.StringVar(&cfg.StaticDir, "static-dir", "./ui/static", "Path to static assets")
+	flag.Parse()
+
+	// логирование
+	infoLog := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
+	errorLog := log.New(os.Stderr, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
+
+	app := &application{
+		errorLog: errorLog,
+		infoLog:  infoLog,
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", app.home)
+	mux.HandleFunc("/snippet", app.showSnippet)
+	mux.HandleFunc("/snippet/create", app.createSnippet)
+
+	srv := &http.Server{
+		Addr:     cfg.Addr,
+		ErrorLog: errorLog,
+		Handler:  app.routes(),
+	}
+
+	fileServer := http.FileServer(http.Dir(cfg.StaticDir))
 	mux.Handle("/static/", http.StripPrefix("/static", fileServer))
 
-	// Use the http.ListenAndServe() function to start a new web server. We pas
-	// two parameters: the TCP network address to listen on (in this case ":4000
-	// and the servemux we just created. If http.ListenAndServe() returns an err
-	// we use the log.Fatal() function to log the error message and exit.
-	log.Println("Starting server on :4000")
-	err := http.ListenAndServe(":4000", mux)
-	log.Fatal(err)
+	infoLog.Printf("Starting server on %s", cfg.Addr)
+	err := srv.ListenAndServe()
+	errorLog.Fatal(err)
 }
